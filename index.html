@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    
+    <!-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2" crossorigin="anonymous"></script> -->
+    <link rel="stylesheet" href="https://pyscript.net/alpha/pyscript.css" />
+    <script defer src="https://pyscript.net/alpha/pyscript.js"></script>
+    <py-env>
+- pandas
+- numpy
+- jinja2
+    </py-env>
+    <title>Calculations</title>
+    <style>
+        .dataframe {
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .dataframe table {
+            border-collapse: collapse;
+            margin: 0px auto;
+        }
+        .dataframe th {
+                background-color:#e02174;
+                color:white;
+        }
+        .dataframe th, td {
+            width:50px;
+            text-align:center;
+            border:1px solid #e02174;
+            padding:5px;
+                   
+        }
+        .dataframe {
+            border-collapse:separate;
+            border-spacing:0 3px;
+            width: 100%;
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="jumbotron">
+        <h2 class="display-4">Deal RPO Calculator!</h2>
+        <p class="lead">This is a tool that provides RPO, ROI and ICPO for selected basket sizes.</p>
+    </div>
+    <div class="row">
+        <div class="col-sm-1 p-2 ml-4 mb-1">
+        </div>
+        <div class="col-sm-3 p-2 mr-4 mb-1">
+            <form>
+                <div class="form-group">
+                  <label for="commission_percentage_input">Select Commission Percentage</label>
+                  <input type="range" max="100" min="10" value="28" step="1" oninput="this.nextElementSibling.value = this.value" class="form-control-range" id="commission_percentage_input">
+                  <output>28</output>
+                </div>
+            </form>
+        </div>
+        <div class="col-sm-3 p-2 mr-4 mb-1">
+            <form>
+                <div class="form-group">
+                  <label for="basket_size_input">Select Basket Size</label>
+                  <input type="range" max="5000" min="100" value="1000" step="50" oninput="this.nextElementSibling.value = this.value" class="form-control-range" id="basket_size_input">
+                  <output>1000</output>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-1 p-2 shadow ml-2 mr-2 mb-4"></div>
+        <div class="col-sm-8 p-2 shadow ml-2 mr-2 mb-4">
+            <div id="chart1"></div>
+        </div>
+    </div>
+    <py-script>
+        import pandas as pd
+        import numpy as np
+        from js import document
+        from pyodide import create_proxy
+
+        l = np.linspace(0.1,0.5,41)
+        m = [(round(i, 2), round(j, 2)) for i in l for j in l]
+
+        def plot(commission_percentage, basket_size):
+            df = pd.DataFrame(data=m, columns=['Discount %', 'FP Share'], dtype=float)
+            df['Commission Percentage'] = commission_percentage / 100
+            df['Basket Size'] = basket_size
+            df['Discount Amount'] = df['Discount %'] * df['Basket Size']
+            df['Customer Price'] = df['Basket Size'] - df['Discount Amount']
+            df['ICPO'] = df['FP Share'] * df['Discount Amount']
+            df['Commissionable Base'] = df['Basket Size'] - df['ICPO']
+            df['RPO'] = df['Commissionable Base'] * df['Commission Percentage']
+            df['ROI'] = df['RPO'] / df['ICPO']
+            df = df[(df.ROI > 1.99)]
+            df = df[['FP Share', 'Discount %', 'ICPO', 'RPO', 'ROI']].sort_values(by='ROI', ascending=False).reset_index(drop=True)
+            df = df.round(2)
+            df = df.loc[df.groupby('FP Share')['Discount %'].agg('idxmax')]
+            df = df.sort_values(by=['FP Share', 'Discount %'], ascending=[False, False]).reset_index(drop=True)
+            formats = {
+                'Discount %': '{:,.0%}'.format,
+                'FP Share': '{:,.0%}'.format,
+                'ICPO': '{:,.2f}'.format,
+                'RPO': '{:,.2f}'.format,
+                'ROI': '{:,.2f}'.format
+            }
+
+            pyscript.write('chart1', df.to_html(index=False, formatters=formats))
+
+        def selectChange(event):
+            commission_percentage = document.getElementById("commission_percentage_input").value
+            basket_size = document.getElementById("basket_size_input").value
+            plot(float(commission_percentage), float(basket_size))
+
+        def setup():
+            # Create a JsProxy for the callback function
+            change_proxy = create_proxy(selectChange)
+
+            e = document.getElementById("commission_percentage_input")
+            e.addEventListener("change", change_proxy)
+            f = document.getElementById("basket_size_input")
+            f.addEventListener("change", change_proxy)
+
+        setup()
+
+        plot(28, 1000)
+    </py-script>
+</body>
+</html>
